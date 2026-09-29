@@ -1,9 +1,9 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.core.exceptions import CustomerAlreadyExistsError
+from app.core.exceptions import CustomerAlreadyExistsError, CustomerNotFoundError
 from app.dependencies import get_customer_service
-from app.schemas.customer import CustomerCreate, CustomerResponse
+from app.schemas.customer import CustomerCreate, CustomerResponse, CustomerUpdate
 from app.services.customer_service import CustomerService
 
 router = APIRouter(prefix="/api/v1/customers", tags=["Customers"])
@@ -71,3 +71,49 @@ def get_all_customers(
     service: CustomerService = Depends(get_customer_service),
 ) -> List[CustomerResponse]:
     return service.get_all_customers()
+
+
+@router.patch(
+    "/{customer_id}",
+    response_model=CustomerResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update a customer",
+    description="Updates a customer's name and/or email. `id` and `created_at` are immutable.",
+)
+def update_customer(
+    customer_id: str,
+    customer_in: CustomerUpdate,
+    service: CustomerService = Depends(get_customer_service),
+) -> CustomerResponse:
+    try:
+        return service.update_customer(customer_id, customer_in)
+    except CustomerNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except CustomerAlreadyExistsError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.delete(
+    "/{customer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a customer",
+    description="Permanently removes a customer record from the JSON store.",
+)
+def delete_customer(
+    customer_id: str,
+    service: CustomerService = Depends(get_customer_service),
+) -> Response:
+    try:
+        service.delete_customer(customer_id)
+    except CustomerNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

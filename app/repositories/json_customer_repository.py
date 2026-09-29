@@ -73,6 +73,28 @@ class JsonCustomerRepository:
         """Appends and persists a customer to the JSON file."""
         customers = self.get_all()
         customers.append(customer)
-        raw_data = [c.model_dump(mode="json") for c in customers]
-        self._write_raw_data(raw_data)
+        self._write_customers(customers)
         return customer
+
+    def update(self, customer: Customer) -> Optional[Customer]:
+        """Replaces the stored customer with the same ID. Returns None if the ID does not exist."""
+        customers = self.get_all()
+        for index, existing in enumerate(customers):
+            if existing.id == customer.id:
+                customers[index] = customer
+                self._write_customers(customers)
+                return customer
+        return None
+
+    def delete(self, customer_id: str) -> bool:
+        """Removes the customer with the given ID. Returns False if the ID does not exist."""
+        customers = self.get_all()
+        remaining = [c for c in customers if c.id != customer_id]
+        if len(remaining) == len(customers):
+            return False
+        self._write_customers(remaining)
+        return True
+
+    def _write_customers(self, customers: List[Customer]) -> None:
+        """Serializes and persists the full list of customers."""
+        self._write_raw_data([c.model_dump(mode="json") for c in customers])
