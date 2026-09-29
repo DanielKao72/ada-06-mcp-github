@@ -3,6 +3,8 @@
 ## User Story
 As a user, I want to search customers by name or email, so that I can quickly find the customer record I need.
 
+As an admin, I want to update or delete an existing customer, so that I can keep customer records accurate across their full lifecycle.
+
 ## Functional Requirements
 
 ### FR-01: Partial Substring Search by Name or Email
@@ -52,6 +54,22 @@ As a user, I want to search customers by name or email, so that I can quickly fi
 4. **Environment:** Normal operation
 5. **Response:** Reads and deserializes all customer records stored in the local JSON file
 6. **Measure:** Returns HTTP 200 OK with a JSON array containing all persisted customer records (or `[]` if storage is empty)
+
+### FR-07: Partial Customer Update
+1. **Source:** API Client / Admin maintaining customer records
+2. **Stimulus:** Submits a `PATCH /api/v1/customers/{customer_id}` request with a JSON payload containing `name`, `email`, or both
+3. **Artifact:** Customer Update Endpoint, Customer Service & JSON Repository
+4. **Environment:** Normal operation with read/write access to the local JSON file
+5. **Response:** Validates the payload, verifies the customer exists and that a new email is not used by another customer, applies only the provided fields, keeps `id` and `created_at` immutable, and persists the updated record
+6. **Measure:** Returns HTTP 200 OK with the updated customer; HTTP 404 Not Found if `customer_id` does not exist; HTTP 409 Conflict if the email belongs to another customer; HTTP 422 Unprocessable Entity if the payload fails validation. Rejected requests leave storage unchanged
+
+### FR-08: Customer Deletion
+1. **Source:** API Client / Admin maintaining customer records
+2. **Stimulus:** Submits a `DELETE /api/v1/customers/{customer_id}` request
+3. **Artifact:** Customer Deletion Endpoint, Customer Service & JSON Repository
+4. **Environment:** Normal operation with read/write access to the local JSON file
+5. **Response:** Permanently removes the matching customer record from the local JSON file
+6. **Measure:** Returns HTTP 204 No Content with an empty body on success; HTTP 404 Not Found if `customer_id` does not exist in storage
 
 ## Non-Functional Requirements
 * **NFR-01 (Local JSON Persistence):** Data persistence must rely exclusively on a local JSON file (e.g., `data/customers.json`), with safe read/write operations and automatic file initialization if missing.

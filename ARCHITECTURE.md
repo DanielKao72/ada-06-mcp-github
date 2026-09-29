@@ -32,6 +32,7 @@ flowchart TD
     Client -->|HTTP GET /search?q=...| Router
     Client -->|HTTP POST /customers| Router
     Client -->|HTTP GET /customers| Router
+    Client -->|HTTP PATCH / DELETE /customers/id| Router
     
     Router --> Validator
     Router -->|Resolves Service| Deps
@@ -110,6 +111,8 @@ class JsonCustomerRepository:
     def get_by_email(self, email: str) -> Customer | None: ...
     def search(self, term: str) -> list[Customer]: ...
     def save(self, customer: Customer) -> Customer: ...
+    def update(self, customer: Customer) -> Customer | None: ...  # None if ID not found
+    def delete(self, customer_id: str) -> bool: ...                # False if ID not found
 ```
 
 ### Service Interface (`CustomerService`)
@@ -119,19 +122,24 @@ class CustomerService:
     def search_customers(self, query: str) -> list[CustomerResponse]: ...
     def create_customer(self, customer_in: CustomerCreate) -> CustomerResponse: ...
     def get_all_customers(self) -> list[CustomerResponse]: ...
+    def update_customer(self, customer_id: str, customer_in: CustomerUpdate) -> CustomerResponse: ...
+    def delete_customer(self, customer_id: str) -> None: ...
 ```
 
 ### HTTP REST Endpoints
 * `GET /api/v1/customers/search?q={query}`: Searches customers by partial name or email.
 * `POST /api/v1/customers`: Registers a new customer record.
 * `GET /api/v1/customers`: Returns all existing customer records.
+* `PATCH /api/v1/customers/{customer_id}`: Partially updates a customer's name and/or email.
+* `DELETE /api/v1/customers/{customer_id}`: Permanently deletes a customer record.
 
 ---
 
 ## Error Handling
 
 * **Validation Failures (HTTP 422):** FastAPI and Pydantic automatically intercept malformed queries (missing `q`, length $< 2$ or $> 100$) and invalid body payloads (invalid email format, empty strings), returning standardized error schemas.
-* **Conflict Errors (HTTP 409):** Raised by `CustomerService` when an attempt is made to register a customer with an email address that is already present in the JSON file.
+* **Not Found Errors (HTTP 404):** `CustomerService` raises `CustomerNotFoundError` when updating or deleting an unknown `customer_id`; the router maps it to 404.
+* **Conflict Errors (HTTP 409):** Raised by `CustomerService` (`CustomerAlreadyExistsError`) when an attempt is made to register a customer, or update a customer's email, with an email address already owned by another customer in the JSON file.
 * **Storage and Parsing Errors (HTTP 500):** If the JSON file cannot be read or is corrupted, internal exceptions are captured and logged, returning an internal server error response without exposing sensitive stack traces.
 
 ---

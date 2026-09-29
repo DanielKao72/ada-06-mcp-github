@@ -9,6 +9,7 @@ A lightweight, RESTful microservice built with **FastAPI** and **Pydantic** to s
 - **Partial Substring Search:** Query customers by partial name or email matching (e.g., prefix, infix, suffix).
 - **Case-Insensitive & Whitespace Trimming:** Search terms are automatically trimmed and matched regardless of uppercase/lowercase input.
 - **Strict Input Validation:** Enforces query length limits ($2 \le \text{length} \le 100$) and RFC-compliant email formats via Pydantic.
+- **Customer Lifecycle Management:** Create, list, partially update (`PATCH`), and delete (`DELETE`) customers, with email uniqueness enforced on create and update.
 - **Local JSON File Persistence:** Zero external database dependencies; automatically creates and persists customer records to `data/customers.json`.
 - **Comprehensive Automated Testing:** 100% test coverage using `pytest` and `httpx` with isolated temporary filesystem fixtures (`tmp_path`).
 
@@ -40,7 +41,8 @@ ada-05-spec-driven-feature/
 │   ├── test_json_customer_repository.py# Unit tests for repository layer
 │   ├── test_customer_service.py        # Unit tests for service layer
 │   ├── test_customer_api_validation.py # Integration tests for status codes & errors
-│   └── test_customer_search_api.py     # End-to-end acceptance & search scenario tests
+│   ├── test_customer_search_api.py     # End-to-end acceptance & search scenario tests
+│   └── test_customer_update_delete_api.py # End-to-end update (PATCH) & delete (DELETE) tests
 ├── requirements.txt                    # Project dependencies
 ├── REQUIREMENTS.md                     # Functional & non-functional requirements
 ├── SPEC.md                             # Feature specification & acceptance criteria
@@ -234,4 +236,58 @@ Retrieves all customer records currently persisted in the JSON store.
       "created_at": "2026-09-23T23:40:00.000000+00:00"
     }
   ]
+  ```
+
+---
+
+### 5. Update Customer (Partial)
+Updates a customer's `name`, `email`, or both. `id` and `created_at` are immutable.
+
+- **Endpoint:** `PATCH /api/v1/customers/{customer_id}`
+- **Body rules:** at least one of `name` / `email`; `null` values and extra fields (including `id` and `created_at`) are rejected with `422`.
+- **Request:**
+  ```bash
+  curl -X PATCH http://127.0.0.1:8000/api/v1/customers/f8455716-bb9d-4181-bc4f-baa0b176633c \
+    -H "Content-Type: application/json" \
+    -d '{"name": "Alex Hamilton"}'
+  ```
+- **Response (HTTP 200 OK):**
+  ```json
+  {
+    "id": "f8455716-bb9d-4181-bc4f-baa0b176633c",
+    "name": "Alex Hamilton",
+    "email": "hamilton@treasury.gov",
+    "created_at": "2026-09-23T23:40:00.000000+00:00"
+  }
+  ```
+- **Customer Not Found (HTTP 404 Not Found):**
+  ```json
+  {
+    "detail": "Customer with id 'non-existent-id' not found."
+  }
+  ```
+- **Email Used by Another Customer (HTTP 409 Conflict):**
+  ```json
+  {
+    "detail": "Customer with email 'washington@mountvernon.org' already exists."
+  }
+  ```
+- **Validation Error (HTTP 422 Unprocessable Entity):** e.g. `{}`, `{"name": ""}`, `{"email": "not-an-email"}` or `{"id": "new-id"}`.
+
+---
+
+### 6. Delete Customer
+Permanently removes a customer record from the JSON store.
+
+- **Endpoint:** `DELETE /api/v1/customers/{customer_id}`
+- **Request:**
+  ```bash
+  curl -X DELETE http://127.0.0.1:8000/api/v1/customers/f8455716-bb9d-4181-bc4f-baa0b176633c
+  ```
+- **Response (HTTP 204 No Content):** empty body.
+- **Customer Not Found (HTTP 404 Not Found):**
+  ```json
+  {
+    "detail": "Customer with id 'non-existent-id' not found."
+  }
   ```
