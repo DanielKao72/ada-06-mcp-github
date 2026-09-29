@@ -10,6 +10,8 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 - `FR-04`: No Matching Results Handling
 - `FR-05`: Customer Creation and Persistence
 - `FR-06`: List All Customers
+- `FR-07`: Partial Customer Update
+- `FR-08`: Customer Deletion
 - `NFR-01`: Local JSON Persistence
 - `NFR-02`: Decoupled Architecture & Testability
 - `NFR-03`: Automated Testing & Code Quality
@@ -20,13 +22,17 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 * **Customer Management Endpoints:**
   * `POST /api/v1/customers`: Register customer with unique UUID, RFC-compliant email, name, and UTC timestamp.
   * `GET /api/v1/customers`: Retrieve all registered customer records.
+  * `PATCH /api/v1/customers/{customer_id}`: Partially update a customer's `name` and/or `email`.
+  * `DELETE /api/v1/customers/{customer_id}`: Permanently delete a customer record.
 * **Local File Persistence:** Reading, writing, and automatically initializing the local JSON data store (`data/customers.json`).
 * **Automated Testing Suite:** End-to-end endpoint tests and unit tests using `pytest` and `httpx` (`TestClient`) with isolated temporary file fixtures (`tmp_path`).
 
 ## Out of Scope
 * Integration with external database management systems (e.g., PostgreSQL, MySQL, MongoDB).
 * Full-text search engine indexing (e.g., Elasticsearch, Meilisearch).
-* Customer modification (`PUT`/`PATCH`) and deletion (`DELETE`) operations.
+* Full customer replacement (`PUT`) and bulk update/delete operations.
+* Soft deletion, deletion history, or restoring deleted customers.
+* Retrieving a single customer by ID (`GET /api/v1/customers/{customer_id}`).
 * User authentication, authorization, and rate limiting.
 * Fuzzy matching algorithms (e.g., Levenshtein distance, Soundex).
 
@@ -72,9 +78,24 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 * `email`: Required, must be a valid email format conforming to standard email syntax.
 * Duplicate email check: Returns HTTP `409 Conflict` or `422 Unprocessable Entity` if the email already exists in storage.
 
+### 3. Customer Update Payload (`PATCH /api/v1/customers/{customer_id}`)
+* At least one of `name` or `email` must be provided; an empty body `{}` is rejected with `422`.
+* `name` (optional): Same rules as creation — non-empty after trimming, maximum 150 characters.
+* `email` (optional): Must be a valid email format conforming to standard email syntax.
+* Explicit `null` values for `name` or `email` are rejected with `422`.
+* `id` and `created_at` are immutable: including them (or any other unknown field) in the payload is rejected with `422`.
+* Only the provided fields are modified; omitted fields keep their stored values.
+* Duplicate email check: If the new email (case-insensitive) belongs to **another** customer, returns HTTP `409 Conflict`. Re-submitting the customer's own current email is allowed.
+* Unknown `customer_id`: returns HTTP `404 Not Found`.
+
+### 4. Customer Deletion (`DELETE /api/v1/customers/{customer_id}`)
+* On success the record is permanently removed from `data/customers.json` and the response is HTTP `204 No Content` with an empty body.
+* Unknown `customer_id`: returns HTTP `404 Not Found`.
+
 ## Error Handling
-* **HTTP 422 Unprocessable Entity:** Returned when request parameters or payload fail Pydantic schema validation (e.g., missing parameter `q`, search term shorter than 2 characters, invalid email format).
-* **HTTP 409 Conflict:** Returned when attempting to create a customer with an email that is already registered.
+* **HTTP 422 Unprocessable Entity:** Returned when request parameters or payload fail Pydantic schema validation (e.g., missing parameter `q`, search term shorter than 2 characters, invalid email format, empty or immutable-field update payloads).
+* **HTTP 404 Not Found:** Returned when updating or deleting a `customer_id` that does not exist in storage.
+* **HTTP 409 Conflict:** Returned when attempting to create a customer with an email that is already registered, or to update a customer's email to one owned by another customer.
 * **HTTP 500 Internal Server Error:** Returned in the event of unexpected file I/O errors or corrupted JSON data, accompanied by descriptive server-side logging.
 
 ## Acceptance Criteria
@@ -114,6 +135,34 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 * **When** a client requests `GET /api/v1/customers`,
 * **Then** the API responds with HTTP 200 OK containing all stored customer records.
 
+### AC-08: Successfully Update Customer Details
+* **Given** an existing customer with ID `cust-123` ("John Doe", "john@example.com"),
+* **When** a client sends `PATCH /api/v1/customers/cust-123` with `{"name": "Johnathan Doe"}`,
+* **Then** the service updates the record in JSON storage
+* **And** returns HTTP 200 OK with the updated name and unchanged email, `id`, and `created_at`.
+
+### AC-09: Prevent Email Collision on Update
+* **Given** customer A ("a@domain.com") and customer B ("b@domain.com"),
+* **When** a client sends `PATCH` on customer B with `{"email": "a@domain.com"}`,
+* **Then** the service rejects the operation
+* **And** returns HTTP 409 Conflict.
+
+### AC-10: Update Non-Existent Customer
+* **Given** an empty or populated customer store,
+* **When** a client sends `PATCH /api/v1/customers/non-existent-id`,
+* **Then** the service returns HTTP 404 Not Found.
+
+### AC-11: Successfully Delete Customer
+* **Given** an existing customer with ID `cust-123`,
+* **When** a client sends `DELETE /api/v1/customers/cust-123`,
+* **Then** the record is permanently removed from the JSON store
+* **And** the service returns HTTP 204 No Content.
+
+### AC-12: Delete Non-Existent Customer
+* **Given** a customer ID `non-existent-id` not present in storage,
+* **When** a client sends `DELETE /api/v1/customers/non-existent-id`,
+* **Then** the service returns HTTP 404 Not Found.
+
 ## Test Scenarios
 * **TS-01 (Partial Name Search):** Verify search matches prefix, infix, and suffix substrings in customer names.
 * **TS-02 (Partial Email Search):** Verify search matches username, separator, domain, and TLD substrings.
@@ -125,6 +174,12 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 * **TS-08 (Duplicate Email Prevention):** Verify attempting to create a customer with an existing email returns an appropriate client error.
 * **TS-09 (Full Listing):** Verify `GET /api/v1/customers` returns all entries from storage.
 * **TS-10 (Repository Initialization & Isolation):** Verify repository creates JSON file when absent and works reliably with `pytest`'s `tmp_path` fixture.
+* **TS-11 (Partial Update):** Verify `PATCH` updates only the provided fields (`name`, `email`, or both), persists them, and preserves `id` and `created_at`.
+* **TS-12 (Update Email Collision):** Verify updating to another customer's email (case-insensitive) returns `409` without modifying storage, while re-submitting the customer's own email returns `200`.
+* **TS-13 (Update Validation):** Verify empty body, empty/whitespace/too-long name, malformed email, explicit `null`, and immutable/unknown fields return `422` without modifying storage.
+* **TS-14 (Update Not Found):** Verify `PATCH` on an unknown ID returns `404` for both empty and populated stores.
+* **TS-15 (Deletion):** Verify `DELETE` removes only the targeted record from disk and returns `204` with an empty body.
+* **TS-16 (Delete Not Found):** Verify `DELETE` on an unknown or already-deleted ID returns `404` and leaves storage unchanged.
 
 ## Constraints
 * **Runtime & Framework:** Python 3.10+, FastAPI, Uvicorn.
@@ -134,4 +189,4 @@ Provide a lightweight, RESTful customer search capability that allows clients to
 
 ## Open Questions
 * **Q-01 (Pagination & Sorting):** N/A for initial release. Justification: In-memory filtering over local JSON is performant for expected dataset sizes; pagination will be addressed in future milestones if datasets grow.
-* **Q-02 (Email Uniqueness Enforcement):** Enforced during customer creation (`POST /api/v1/customers`) to avoid duplicate profiles sharing the same email in the local JSON repository.
+* **Q-02 (Email Uniqueness Enforcement):** Enforced during customer creation (`POST /api/v1/customers`) and customer update (`PATCH /api/v1/customers/{customer_id}`) to avoid duplicate profiles sharing the same email in the local JSON repository.

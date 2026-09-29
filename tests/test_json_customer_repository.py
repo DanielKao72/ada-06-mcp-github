@@ -67,3 +67,39 @@ def test_repository_search_partial_and_case_insensitive(tmp_path: Path) -> None:
 
     # Non-matching search
     assert repo.search("nonexistent") == []
+
+
+def test_repository_update_existing_and_missing(tmp_path: Path) -> None:
+    db_file = tmp_path / "customers.json"
+    repo = JsonCustomerRepository(db_file)
+    customer = Customer(name="John Doe", email="john@example.com")
+    other = Customer(name="Jane Roe", email="jane@example.com")
+    repo.save(customer)
+    repo.save(other)
+
+    updated = customer.model_copy(update={"name": "Johnathan Doe"})
+    assert repo.update(updated) == updated
+
+    # Persisted to disk, order preserved, other records untouched
+    reloaded = JsonCustomerRepository(db_file).get_all()
+    assert reloaded == [updated, other]
+
+    missing = Customer(name="Ghost", email="ghost@example.com")
+    assert repo.update(missing) is None
+    assert repo.get_all() == [updated, other]
+
+
+def test_repository_delete_existing_and_missing(tmp_path: Path) -> None:
+    db_file = tmp_path / "customers.json"
+    repo = JsonCustomerRepository(db_file)
+    customer = Customer(name="John Doe", email="john@example.com")
+    other = Customer(name="Jane Roe", email="jane@example.com")
+    repo.save(customer)
+    repo.save(other)
+
+    assert repo.delete(customer.id) is True
+    assert JsonCustomerRepository(db_file).get_all() == [other]
+
+    assert repo.delete(customer.id) is False
+    assert repo.delete("nonexistent-id") is False
+    assert repo.get_all() == [other]

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.customer import Customer, CustomerCreate, CustomerResponse
+from app.schemas.customer import Customer, CustomerCreate, CustomerResponse, CustomerUpdate
 
 
 def test_customer_create_valid() -> None:
@@ -36,3 +36,31 @@ def test_customer_response_serialization() -> None:
     assert response.name == "Diana Prince"
     assert response.email == "diana@example.com"
     assert response.created_at == customer.created_at
+
+
+def test_customer_update_partial_fields() -> None:
+    update = CustomerUpdate(name="  Johnathan Doe  ")
+    assert update.name == "Johnathan Doe"
+    assert update.model_dump(exclude_unset=True) == {"name": "Johnathan Doe"}
+
+    update = CustomerUpdate(email="john@example.com")
+    assert update.model_dump(exclude_unset=True) == {"email": "john@example.com"}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"name": ""},
+        {"name": "   "},
+        {"name": "a" * 151},
+        {"email": "invalid-email-format"},
+        {"name": None},
+        {"email": None},
+        {"id": "new-id"},
+        {"name": "Valid Name", "created_at": "2020-01-01T00:00:00Z"},
+    ],
+)
+def test_customer_update_invalid_payloads(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        CustomerUpdate(**payload)

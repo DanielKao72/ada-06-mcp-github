@@ -78,3 +78,24 @@
   - Includes commands to execute the `pytest` test suite.
   - Provides example `curl` requests and JSON responses for all endpoints (`/search`, `POST /customers`, `GET /customers`).
 - **Verification:** Follow the documented steps in `README.md` sequentially to verify commands and examples function correctly.
+
+## T-07 Customer update and delete
+- **Goal:** Add partial update (`PATCH`) and deletion (`DELETE`) of customers by ID, covering FR-07 and FR-08.
+- **Files:**
+  - `app/schemas/customer.py`
+  - `app/core/exceptions.py`
+  - `app/repositories/json_customer_repository.py`
+  - `app/services/customer_service.py`
+  - `app/routers/customer_router.py`
+  - `tests/test_domain_models.py`
+  - `tests/test_json_customer_repository.py`
+  - `tests/test_customer_service.py`
+  - `tests/test_customer_update_delete_api.py`
+  - `SPEC.md`, `REQUIREMENTS.md`, `ARCHITECTURE.md`, `README.md`, `docs/tracebility.md`
+- **Acceptance:**
+  - `CustomerUpdate` schema accepts `name` and/or `email`, rejecting empty bodies, `null` values, and extra fields (`id`, `created_at`).
+  - `CustomerNotFoundError` added; repository exposes `update()` and `delete()`.
+  - `PATCH /api/v1/customers/{customer_id}` returns `200`, `404`, `409`, or `422` as specified.
+  - `DELETE /api/v1/customers/{customer_id}` returns `204` or `404` as specified.
+  - AC-08 through AC-12 and TS-11 through TS-16 are covered by tests; existing tests keep passing.
+- **Verification:** Run `pytest -v` and confirm all test suites pass.
